@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 from time import sleep
 from urllib.parse import urljoin
+import os
 
 class BoanCrawler:
     def __init__(self):
@@ -12,78 +13,116 @@ class BoanCrawler:
         }
 
     def absurl(self, path):
-        """상대 경로를 절대 경로로 변환"""
         return urljoin(self.host, path)
 
     def beautiful_soup(self, response):
-        """응답을 BeautifulSoup으로 변환"""
         return BeautifulSoup(response.text, 'html.parser')
 
     def url_request(self, url):
-    # requests.get 호출 시 verify=False를 추가하여 SSL 인증서 검증을 비활성화합니다.
         return requests.get(url, headers=self.header, verify=False)
 
     def url_parse(self, url):
-        """URL 파싱"""
         url = self.absurl(url)
         response = self.url_request(url)
         soup = self.beautiful_soup(response)
         return soup
 
-    def find_title_link(self, soup):
-        """제목 링크 추출"""
-        title_link_tag = soup.find('div', class_='news_main_title')
-        if title_link_tag:
-            return title_link_tag.find('a')['href']
-        return None
-
     def get_title(self, soup):
-        """뉴스 제목 추출"""
         title_tag = soup.find('div', id='news_title02')
-        if title_tag:
-            return title_tag.get_text(strip=True)
-        else:
-            print("제목을 찾을 수 없습니다.")
-            return None
+        return title_tag.get_text(strip=True) if title_tag else None
 
     def get_content(self, soup):
-        """뉴스 본문 추출"""
         content_tag = soup.find('div', id='news_content')
         if content_tag:
             for tag in content_tag.find_all(['br', 'div', 'p', 'img']):
-                tag.extract()  # 불필요한 태그 제거
+                tag.extract()
             return content_tag.get_text('\n', strip=True)
-        else:
-            print("본문을 찾을 수 없습니다.")
-            return None
+        return None
 
     def get_time(self, soup):
-        """뉴스 작성일 추출"""
         time_tag = soup.find('div', id='news_util01')
-        if time_tag:
-            return time_tag.get_text(strip=True)
-        else:
-            print("작성일을 찾을 수 없습니다.")
-            return None
+        return time_tag.get_text(strip=True) if time_tag else None
 
     def crawl_news(self):
-        """뉴스 크롤링"""
+        new_titles = set()
+        news_items = ""
+
+        # 기존 HTML 파일에서 이미 크롤링된 뉴스 제목 추출
+        old_news = []
+        if os.path.exists('boan_news.html'):
+            with open('boan_news.html', 'r', encoding='utf-8') as f:
+                old_content = f.read()
+            old_soup = BeautifulSoup(old_content, 'html.parser')
+            for title_tag in old_soup.find_all('h2'):
+                new_titles.add(title_tag.text)
+            old_news = old_soup.find_all('div', class_='news-item')
+
+        # 새 뉴스 크롤링
         soup = self.url_parse('/media/list.asp?Page=1&mkind=1&kind=')
-        # 뉴스 제목 링크들 추출
         title_links = soup.find_all('div', class_='news_main_title')
         for link in title_links:
             href = link.find('a')['href']
             if href:
                 page_soup = self.url_parse(href)
                 title = self.get_title(page_soup)
+
+                # 중복 방지: 이미 있는 경우는 건너뜀
+                if title in new_titles:
+                    continue
+
                 content = self.get_content(page_soup)
                 time = self.get_time(page_soup)
-                if title and content and time:
-                    print(f'[{title}]')
-                    print(f"작성일: {time}")
-                    print(content, end='\n\n')
-            sleep(2)
 
+                if title and content and time:
+                    news_items += f"""
+                    <div class="news-item">
+                        <h2>{title}</h2>
+                        <time>{time}</time>
+                        <p>{content}</p>
+                        <span class="delete-button" onclick="deleteNews(this)">삭제</span>
+                    </div>
+                    """
+                    new_titles.add(title)
+                sleep(5)
+
+        # 새로운 HTML 생성 (기존 뉴스 유지, 새 뉴스 상단 추가)
+        html_content = f"""
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>보안 뉴스</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; }}
+                h1 {{ color: #333; text-align: center; }}
+                .news-item {{ background-color: #fff; margin-bottom: 20px; padding: 15px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }}
+                .news-item h2 {{ color: #1e70bf; }}
+                .news-item time {{ color: #888; font-size: 14px; }}
+                .news-item p {{ line-height: 1.6; }}
+                .delete-button {{ color: red; cursor: pointer; font-weight: bold; margin-top: 10px; }}
+            </style>
+            <script>
+                function deleteNews(element) {{
+                    var newsItem = element.parentElement;
+                    newsItem.remove();
+                }}
+            </script>
+        </head>
+        <body>
+            <h1>&#128680;최신 보안 뉴스&#128680;</h1>
+            {news_items}
+        </body>
+        </html>
+        """
+
+        # 기존 뉴스 추가 (중복 방지)
+        with open('boan_news.html', 'w', encoding='utf-8') as f:
+            f.write(html_content)
+            for item in old_news:
+                f.write(str(item))
+
+        print("HTML 파일에 뉴스 내용이 추가되었습니다. boan_news.html에서 확인하세요.")
 
 if __name__ == "__main__":
     boan = BoanCrawler()
