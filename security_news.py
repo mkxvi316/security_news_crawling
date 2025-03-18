@@ -110,7 +110,7 @@ class BoanCrawler:
             </script>
         </head>
         <body>
-            <h1>&#128680;최신 보안 뉴스&#128680;</h1>
+            <h1>&#128680;Security News&#128680;</h1>
             {news_items}
         </body>
         </html>
