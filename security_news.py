@@ -46,27 +46,39 @@ class BoanCrawler:
     def crawl_news(self):
         new_titles = set()
         news_items = ""
+        last_crawled_title = None
+        stop_crawling = False
 
         # 기존 HTML 파일에서 이미 크롤링된 뉴스 제목 추출
         old_news = []
+        last_title = None
         if os.path.exists('boan_news.html'):
             with open('boan_news.html', 'r', encoding='utf-8') as f:
                 old_content = f.read()
             old_soup = BeautifulSoup(old_content, 'html.parser')
-            for title_tag in old_soup.find_all('h2'):
+            all_titles = old_soup.find_all('h2')
+            if all_titles:
+                last_title = all_titles[0].text  # 가장 최신 뉴스 제목
+
+            for title_tag in all_titles:
                 new_titles.add(title_tag.text)
             old_news = old_soup.find_all('div', class_='news-item')
 
         # 새 뉴스 크롤링
         soup = self.url_parse('/media/list.asp?Page=1&mkind=1&kind=')
         title_links = soup.find_all('div', class_='news_main_title')
+
         for link in title_links:
             href = link.find('a')['href']
             if href:
                 page_soup = self.url_parse(href)
                 title = self.get_title(page_soup)
 
-                # 중복 방지: 이미 있는 경우는 건너뜀
+                # 중복 방지 또는 마지막 크롤링 뉴스 이후 멈춤
+                if title == last_title:
+                    stop_crawling = True
+                    break
+
                 if title in new_titles:
                     continue
 
@@ -75,14 +87,16 @@ class BoanCrawler:
 
                 if title and content and time:
                     news_items += f"""
-                    <div class="news-item">
-                        <h2>{title}</h2>
+                    <div class="news-item new">
+                        <h2>{title} <span class="new-badge">New</span></h2>
                         <time>{time}</time>
                         <p>{content}</p>
                         <span class="delete-button" onclick="deleteNews(this)">삭제</span>
                     </div>
                     """
                     new_titles.add(title)
+                    if not last_crawled_title:
+                        last_crawled_title = title
                 sleep(5)
 
         # 새로운 HTML 생성 (기존 뉴스 유지, 새 뉴스 상단 추가)
@@ -96,11 +110,13 @@ class BoanCrawler:
             <style>
                 body {{ font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px; }}
                 h1 {{ color: #333; text-align: center; }}
+                .last-crawled {{ color: #d9534f; text-align: center; margin-bottom: 20px; }}
                 .news-item {{ background-color: #fff; margin-bottom: 20px; padding: 15px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }}
                 .news-item h2 {{ color: #1e70bf; }}
                 .news-item time {{ color: #888; font-size: 14px; }}
                 .news-item p {{ line-height: 1.6; }}
                 .delete-button {{ color: red; cursor: pointer; font-weight: bold; margin-top: 10px; }}
+                .new-badge {{ background: red; color: white; font-size: 12px; padding: 2px 5px; border-radius: 5px; margin-left: 5px; }}
             </style>
             <script>
                 function deleteNews(element) {{
@@ -111,6 +127,7 @@ class BoanCrawler:
         </head>
         <body>
             <h1>&#128680;Security News&#128680;</h1>
+            {f'<div class="last-crawled">마지막 크롤링 뉴스: {last_crawled_title}</div>' if last_crawled_title else ''}
             {news_items}
         </body>
         </html>
@@ -125,5 +142,5 @@ class BoanCrawler:
         print("HTML 파일에 뉴스 내용이 추가되었습니다. boan_news.html에서 확인하세요.")
 
 if __name__ == "__main__":
-    boan = BoanCrawler()
+    boan = BoanCrawler() # 선언
     boan.crawl_news()
