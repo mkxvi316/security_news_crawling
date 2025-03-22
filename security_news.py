@@ -47,37 +47,30 @@ class BoanCrawler:
         new_titles = set()
         news_items = ""
         last_crawled_title = None
-        stop_crawling = False
 
         # 기존 HTML 파일에서 이미 크롤링된 뉴스 제목 추출
         old_news = []
-        last_title = None
         if os.path.exists('boan_news.html'):
             with open('boan_news.html', 'r', encoding='utf-8') as f:
                 old_content = f.read()
             old_soup = BeautifulSoup(old_content, 'html.parser')
-            all_titles = old_soup.find_all('h2')
-            if all_titles:
-                last_title = all_titles[0].text  # 가장 최신 뉴스 제목
-
-            for title_tag in all_titles:
-                new_titles.add(title_tag.text)
+            for title_tag in old_soup.find_all('h2'):
+                title_text = title_tag.get_text(strip=True).replace('New', '').strip()
+                new_titles.add(title_text)
+                # 기존 뉴스에서 'New' 배지를 제거
+                title_tag.find('span', class_='new-badge') and title_tag.find('span', class_='new-badge').extract()
             old_news = old_soup.find_all('div', class_='news-item')
 
         # 새 뉴스 크롤링
         soup = self.url_parse('/media/list.asp?Page=1&mkind=1&kind=')
         title_links = soup.find_all('div', class_='news_main_title')
+        new_news = []
 
         for link in title_links:
             href = link.find('a')['href']
             if href:
                 page_soup = self.url_parse(href)
                 title = self.get_title(page_soup)
-
-                # 중복 방지 또는 마지막 크롤링 뉴스 이후 멈춤
-                if title == last_title:
-                    stop_crawling = True
-                    break
 
                 if title in new_titles:
                     continue
@@ -86,14 +79,14 @@ class BoanCrawler:
                 time = self.get_time(page_soup)
 
                 if title and content and time:
-                    news_items += f"""
-                    <div class="news-item new">
+                    new_news.append(f"""
+                    <div class="news-item">
                         <h2>{title} <span class="new-badge">New</span></h2>
                         <time>{time}</time>
                         <p>{content}</p>
                         <span class="delete-button" onclick="deleteNews(this)">삭제</span>
                     </div>
-                    """
+                    """)
                     new_titles.add(title)
                     if not last_crawled_title:
                         last_crawled_title = title
@@ -113,10 +106,10 @@ class BoanCrawler:
                 .last-crawled {{ color: #d9534f; text-align: center; margin-bottom: 20px; }}
                 .news-item {{ background-color: #fff; margin-bottom: 20px; padding: 15px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }}
                 .news-item h2 {{ color: #1e70bf; }}
+                .new-badge {{ color: #fff; background: #d9534f; padding: 2px 5px; border-radius: 5px; font-size: 0.8em; margin-left: 5px; }}
                 .news-item time {{ color: #888; font-size: 14px; }}
                 .news-item p {{ line-height: 1.6; }}
                 .delete-button {{ color: red; cursor: pointer; font-weight: bold; margin-top: 10px; }}
-                .new-badge {{ background: red; color: white; font-size: 12px; padding: 2px 5px; border-radius: 5px; margin-left: 5px; }}
             </style>
             <script>
                 function deleteNews(element) {{
@@ -128,16 +121,15 @@ class BoanCrawler:
         <body>
             <h1>&#128680;Security News&#128680;</h1>
             {f'<div class="last-crawled">마지막 크롤링 뉴스: {last_crawled_title}</div>' if last_crawled_title else ''}
-            {news_items}
+            {''.join(new_news)}
+            {''.join(str(item) for item in old_news)}
         </body>
         </html>
         """
 
-        # 기존 뉴스 추가 (중복 방지)
+        # 새 HTML 파일 생성
         with open('boan_news.html', 'w', encoding='utf-8') as f:
             f.write(html_content)
-            for item in old_news:
-                f.write(str(item))
 
         print("HTML 파일에 뉴스 내용이 추가되었습니다. boan_news.html에서 확인하세요.")
 
