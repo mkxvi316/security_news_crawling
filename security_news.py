@@ -47,6 +47,7 @@ class BoanCrawler:
         new_titles = set()
         news_items = ""
         last_crawled_title = None
+        new_news = []
 
         # 기존 HTML 파일에서 이미 크롤링된 뉴스 제목 추출
         old_news = []
@@ -64,7 +65,6 @@ class BoanCrawler:
         # 새 뉴스 크롤링
         soup = self.url_parse('/media/list.asp?Page=1&mkind=1&kind=')
         title_links = soup.find_all('div', class_='news_main_title')
-        new_news = []
 
         for link in title_links:
             href = link.find('a')['href']
@@ -131,8 +131,12 @@ class BoanCrawler:
         with open('boan_news.html', 'w', encoding='utf-8') as f:
             f.write(html_content)
 
-        print("HTML 파일에 뉴스 내용이 추가되었습니다. boan_news.html에서 확인하세요.")
+        # 출력 메시지
+        if new_news:
+            print("뉴스 내용이 추가되었습니다. boan_news.html에서 확인하세요.")
+        else:
+            print("새로운 뉴스가 없습니다.")
 
 if __name__ == "__main__":
-    boan = BoanCrawler() # 선언
+    boan = BoanCrawler()  # 선언
     boan.crawl_news()
