@@ -19,13 +19,20 @@ class BoanCrawler:
         return BeautifulSoup(response.text, 'html.parser')
 
     def url_request(self, url):
-        return requests.get(url, headers=self.header, verify=False)
+        try:
+            response = requests.get(url, headers=self.header, verify=False)  # SSL 검증을 활성화
+            response.raise_for_status()  # 상태 코드 4xx, 5xx일 때 예외 발생
+            return response
+        except requests.RequestException as e:
+            print(f"Request failed: {e}")
+            return None
 
     def url_parse(self, url):
         url = self.absurl(url)
         response = self.url_request(url)
-        soup = self.beautiful_soup(response)
-        return soup
+        if response:
+            return self.beautiful_soup(response)
+        return None
 
     def get_title(self, soup):
         title_tag = soup.find('div', id='news_title02')
@@ -63,34 +70,40 @@ class BoanCrawler:
             old_news = old_soup.find_all('div', class_='news-item')
 
         # 새 뉴스 크롤링
-        soup = self.url_parse('/media/list.asp?Page=1&mkind=1&kind=')
-        title_links = soup.find_all('div', class_='news_main_title')
+        for page_num in range(1, 6):  # 5페이지까지 크롤링
+            soup = self.url_parse(f'/media/list.asp?Page={page_num}&mkind=1&kind=')
+            if soup:
+                title_links = soup.find_all('div', class_='news_main_title')
 
-        for link in title_links:
-            href = link.find('a')['href']
-            if href:
-                page_soup = self.url_parse(href)
-                title = self.get_title(page_soup)
+                for link in title_links:
+                    href = link.find('a')['href']
+                    if href:
+                        page_soup = self.url_parse(href)
+                        if page_soup:
+                            title = self.get_title(page_soup)
 
-                if title in new_titles:
-                    continue
+                            if title in new_titles:
+                                continue
 
-                content = self.get_content(page_soup)
-                time = self.get_time(page_soup)
+                            content = self.get_content(page_soup)
+                            time = self.get_time(page_soup)
 
-                if title and content and time:
-                    new_news.append(f"""
-                    <div class="news-item">
-                        <h2>{title} <span class="new-badge">New</span></h2>
-                        <time>{time}</time>
-                        <p>{content}</p>
-                        <span class="delete-button" onclick="deleteNews(this)">삭제</span>
-                    </div>
-                    """)
-                    new_titles.add(title)
-                    if not last_crawled_title:
-                        last_crawled_title = title
-                sleep(5)
+                            if title and content and time:
+                                new_news.append(f"""
+                                <div class="news-item">
+                                    <h2>{title} <span class="new-badge">New</span></h2>
+                                    <time>{time}</time>
+                                    <p>{content}</p>
+                                    <span class="delete-button" onclick="deleteNews(this)">삭제</span>
+                                </div>
+                                """)
+                                new_titles.add(title)
+                                if not last_crawled_title:
+                                    last_crawled_title = title
+                            sleep(1)  # 크롤링 속도 개선을 위한 대기 시간
+            else:
+                print(f"페이지 {page_num} 크롤링 실패.")
+                break
 
         # 새로운 HTML 생성 (기존 뉴스 유지, 새 뉴스 상단 추가)
         html_content = f"""
